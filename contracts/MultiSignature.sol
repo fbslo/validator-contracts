@@ -3,6 +3,8 @@ pragma solidity ^0.8.4;
 
 import './interfaces/IERC20.sol';
 
+import "hardhat/console.sol";
+
 /// @title MultiSignature contract for Splinterlands
 /// @author @fbslo
 /// @notice Multisignature contract that only allows changes if enough valid signatures are used
@@ -65,8 +67,9 @@ contract MultiSignature {
   function transfer(bytes[] memory signatures, address to, uint256 amount, string memory referenceString) external {
       require(!isAlreadyApproved[referenceString], 'Reference already used');
 
-      bytes32 messageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encodePacked(to, amount, referenceString))));
-      require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
+      bytes32 message = prefixed(keccak256(abi.encodePacked(to, amount, referenceString, address(this))));
+
+      require(areSignaturesValid(signatures, message), 'Signatures not valid/threshold not reached');
       isAlreadyApproved[referenceString] = true;
 
       IERC20(tokenContract).transfer(to, amount);
@@ -83,7 +86,7 @@ contract MultiSignature {
     require(!isNonceUsed[nonce], 'Nonce already used');
     require(!isValidator[newValidator], 'Validator already exists');
 
-    bytes32 messageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encodePacked(newValidator, nonce))));
+    bytes32 messageHash = prefixed(abi.encodePacked(keccak256(abi.encodePacked(newValidator, nonce, address(this)))));
     require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
 
     isValidator[newValidator] = true;
@@ -102,7 +105,7 @@ contract MultiSignature {
     require(!isNonceUsed[nonce], 'Nonce already used');
     require(isValidator[validatorAddress], 'Validator does not exists');
 
-    bytes32 messageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encodePacked(validatorAddress, nonce))));
+    bytes32 messageHash = prefixed(abi.encodePacked(keccak256(abi.encodePacked(validatorAddress, nonce, address(this)))));
     require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
 
     isValidator[validatorAddress] = false;
@@ -123,7 +126,7 @@ contract MultiSignature {
   function updateThreshold(bytes[] memory signatures, uint256 newThreshold, uint256 nonce) external {
     require(!isNonceUsed[nonce], 'Nonce already used');
 
-    bytes32 messageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encodePacked(newThreshold, nonce))));
+    bytes32 messageHash = prefixed(abi.encodePacked(keccak256(abi.encodePacked(newThreshold, nonce, address(this)))));
     require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
 
     uint256 oldThreshold = threshold;
@@ -144,6 +147,7 @@ contract MultiSignature {
 
     for (uint i = 0; i < signatures.length; i++) {
       address signer = recoverSigner(messageHash, signatures[i]);
+      console.log("signer %s", signer);
       if (isValidator[signer] && !isSignatureUsed[signer] && !validatorAlreadySigned[signer]){
         isSignatureUsed[signer] = true;
         validatorAlreadySigned[signer] = true;
@@ -167,45 +171,50 @@ contract MultiSignature {
 
   /**
    * @notice Recover signer address from signature
-   * @param hash Hash of the message signed
+   * @param message Hash of the message signed
    * @param signature The signature from validators
    * @return The address of the signer, address(0) if signature is invalid
    */
-  function recoverSigner(bytes32 hash, bytes memory signature) private pure returns (address){
-      bytes32 r;
-      bytes32 s;
-      uint8 v;
+  function recoverSigner(bytes32 message, bytes memory signature)
+    internal
+    pure
+    returns (address)
+  {
+    uint8 v;
+    bytes32 r;
+    bytes32 s;
 
-      if (signature.length != 65) {
-          return (address(0));
-      }
+    (v, r, s) = splitSignature(signature);
 
-      assembly {
-          r := mload(add(signature, 0x20))
-          s := mload(add(signature, 0x40))
-          v := byte(0, mload(add(signature, 0x60)))
-      }
-
-      if (v < 27) {
-          v += 27;
-      }
-
-      if (v != 27 && v != 28) {
-          return (address(0));
-      } else {
-          return ecrecover(hash, v, r, s);
-      }
+    return ecrecover(message, v, r, s);
   }
 
   /**
-   * @notice Helper function to make it easier for validator application to get hash of the message to sign.
-   * @param to The address of the account receiving the tokens
-   * @param amount The amount of tokens to send
-   * @param referenceString The reference string to identify transactions (e.g. hive transaction hash for cross-chain transfers)
-   * @return Keccak256 hash of the message
+   * @notice Helper function return split signature into r,s,v.
+   * @param signature Signature we want to split
+   * @return r, v, s
    */
-  function getMessageHash(address to, uint256 amount, string memory referenceString) public pure returns(bytes32) {
-      return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encodePacked(to, amount, referenceString))));
+  function splitSignature(bytes memory signature)
+    internal
+    pure
+    returns (uint8, bytes32, bytes32)
+  {
+    require(signature.length == 65);
+
+    bytes32 r;
+    bytes32 s;
+    uint8 v;
+
+    assembly {
+      // first 32 bytes, after the length prefix
+      r := mload(add(signature, 32))
+      // second 32 bytes
+      s := mload(add(signature, 64))
+      // final byte (first byte of the next 32 bytes)
+      v := byte(0, mload(add(signature, 96)))
+    }
+
+    return (v, r, s);
   }
 
   /**
@@ -214,5 +223,13 @@ contract MultiSignature {
    */
   function getValidatorsLength() public view returns(uint256) {
     return validators.length;
+  }
+
+  /**
+   * @notice Helper function return prefixed message.
+   * @return Bytes32 hash of prefixed message
+   */
+  function prefixed(bytes32 hash) internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
   }
 }

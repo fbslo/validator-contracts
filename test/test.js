@@ -1,6 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
+const abi = require('ethereumjs-abi')
+
 let testValidators = [
   '0xc73280617F4daa107F8b2e0F4E75FA5b5239Cf24',
   '0x2b0e9EB31C3F3BC06437A7dF090a2f6a4D658150',
@@ -32,7 +34,7 @@ describe("MultiSignature", function () {
     await multiSignature.deployed();
 
     let tokenTransferTx = mockToken.transfer(multiSignature.address, 10000)
-    await tokenTransferTx.wait()
+    // await tokenTransferTx.wait()
   }
 
   it("should deploy contract and add validators", async function () {
@@ -53,17 +55,24 @@ describe("MultiSignature", function () {
     let signatures = []
 
     for (i in testValidators){
-      let wallet = new ethers.Wallet(testPrivateKeys[i]);
-      let signature = await wallet.signMessage(to + amount + reference);
-      signatures.push(signature)
+      let hash = abi.soliditySHA3(
+        ["address", "uint256", "string", "address"],
+        [to, amount, reference, multiSignature.address]
+      ).toString("hex");
+
+      let signature = web3.eth.accounts.sign(hash, testPrivateKeys[i]);
+      signatures.push(signature.signature)
     }
 
+    console.log(signatures)
+
     let transferTx = await multiSignature.transfer(signatures, to, amount, reference)
-    await transferTx.wait()
 
-    let balance = await mockToken.balanceOf(multiSignature.address)
 
-    //NOT FINISHED YET!
+    // let transferTx = await multiSignature.transfer(signatures, to, amount, reference)
+    // // await transferTx.wait()
+    //
+    // let balance = await mockToken.balanceOf(multiSignature.address)
 
   });
 });
