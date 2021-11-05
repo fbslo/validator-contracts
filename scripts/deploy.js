@@ -5,7 +5,7 @@ async function main() {
   let validators = [
     '0x000000000000000000000000000000000000dEaD'
   ]
-  let token = '0x1633b7157e7638c4d6593436111bf125ee74703f'
+  let token = '0x44883053BfCaf90af0787618173DD56e8C2dEB36'
 
   const MultiSignature = await ethers.getContractFactory("MultiSignature");
   const multiSignature = await MultiSignature.deploy(validators, token);
