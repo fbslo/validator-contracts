@@ -15,8 +15,6 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 
-const BSC_PRIVATE_KEY = ''
-
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */
@@ -30,11 +28,5 @@ module.exports = {
         version: "0.5.16",
       },
     ],
-  },
-  networks: {
-    bsc: {
-      url: `https://bsc-dataseed.binance.org/`,
-      accounts: [`0x${BSC_PRIVATE_KEYBSC_PRIVATE_KEY}`]
-    }
   }
 };

@@ -3,8 +3,6 @@ pragma solidity ^0.8.4;
 
 import './interfaces/IERC20.sol';
 
-import "hardhat/console.sol";
-
 /// @title MultiSignature contract for Splinterlands
 /// @author @fbslo
 /// @notice Multisignature contract that only allows changes if enough valid signatures are used
@@ -16,6 +14,8 @@ contract MultiSignature {
   uint256 public threshold = 80;
   /// @notice Array of all active validators
   address[] public validators;
+  /// @notice Nonce to prevent replay attacks
+  uint256 public nonce = 0;
   /// @notice A record of states if address is validator
   mapping(address => bool) public isValidator;
   /// @notice A record of states if string was already uses as a reference
@@ -67,9 +67,9 @@ contract MultiSignature {
   function transfer(bytes[] memory signatures, address to, uint256 amount, string memory referenceString) external {
       require(!isAlreadyApproved[referenceString], 'Reference already used');
 
-      bytes32 message = prefixed(keccak256(abi.encodePacked(to, amount, referenceString, address(this))));
+      bytes32 hash = getEthereumMessageHash(keccak256(abi.encodePacked(to, amount, referenceString, address(this))));
 
-      require(areSignaturesValid(signatures, message), 'Signatures not valid/threshold not reached');
+      require(areSignaturesValid(signatures, hash), 'Signatures not valid/threshold not reached');
       isAlreadyApproved[referenceString] = true;
 
       IERC20(tokenContract).transfer(to, amount);
@@ -80,17 +80,18 @@ contract MultiSignature {
    * @notice Add new validator
    * @param signatures An array of signatures from validators
    * @param newValidator The address of the new validator
-   * @param nonce The unique number used only once, to prevent replay attacks
+   * @param newNonce The unique number used only once, to prevent replay attacks
    */
-  function addValidator(bytes[] memory signatures, address newValidator, uint256 nonce) external {
+  function addValidator(bytes[] memory signatures, address newValidator, uint256 newNonce) external {
     require(!isNonceUsed[nonce], 'Nonce already used');
     require(!isValidator[newValidator], 'Validator already exists');
 
-    bytes32 messageHash = prefixed(abi.encodePacked(keccak256(abi.encodePacked(newValidator, nonce, address(this)))));
+    bytes32 messageHash = getEthereumMessageHash(keccak256(abi.encodePacked(newValidator, newNonce, address(this))));
     require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
 
     isValidator[newValidator] = true;
     validators.push(newValidator);
+    nonce += 1;
 
     emit ValidatorAdded(newValidator);
   }
@@ -99,19 +100,20 @@ contract MultiSignature {
    * @notice Remove a validator
    * @param signatures An array of signatures from validators
    * @param validatorAddress The address of the validator to remove
-   * @param nonce The unique number used only once, to prevent replay attacks
+   * @param newNonce The unique number used only once, to prevent replay attacks
    */
-  function removeValidator(bytes[] memory signatures, address validatorAddress, uint256 nonce) external {
+  function removeValidator(bytes[] memory signatures, address validatorAddress, uint256 newNonce) external {
     require(!isNonceUsed[nonce], 'Nonce already used');
     require(isValidator[validatorAddress], 'Validator does not exists');
 
-    bytes32 messageHash = prefixed(abi.encodePacked(keccak256(abi.encodePacked(validatorAddress, nonce, address(this)))));
+    bytes32 messageHash = getEthereumMessageHash(keccak256(abi.encodePacked(validatorAddress, newNonce, address(this))));
     require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
 
     isValidator[validatorAddress] = false;
+    nonce += 1;
 
     for (uint256 i = 0; i < validators.length; i++){
-      if (validators[i] == validatorAddress) delete validators[i];
+      if (validators[i] == validatorAddress) removeByIndex(i);
     }
 
     emit ValidatorRemoved(validatorAddress);
@@ -121,16 +123,17 @@ contract MultiSignature {
    * @notice Update required signature threshold
    * @param signatures An array of signatures from validators
    * @param newThreshold The new required threshold, in percents
-   * @param nonce The unique number used only once, to prevent replay attacks
+   * @param newNonce The unique number used only once, to prevent replay attacks
    */
-  function updateThreshold(bytes[] memory signatures, uint256 newThreshold, uint256 nonce) external {
+  function updateThreshold(bytes[] memory signatures, uint256 newThreshold, uint256 newNonce) external {
     require(!isNonceUsed[nonce], 'Nonce already used');
 
-    bytes32 messageHash = prefixed(abi.encodePacked(keccak256(abi.encodePacked(newThreshold, nonce, address(this)))));
+    bytes32 messageHash = getEthereumMessageHash(keccak256(abi.encodePacked(newThreshold, newNonce, address(this))));
     require(areSignaturesValid(signatures, messageHash), 'Signatures not valid/threshold not reached');
 
     uint256 oldThreshold = threshold;
     threshold = newThreshold;
+    nonce += 1;
 
     emit ThresholdUpdated(oldThreshold, threshold);
   }
@@ -147,7 +150,6 @@ contract MultiSignature {
 
     for (uint i = 0; i < signatures.length; i++) {
       address signer = recoverSigner(messageHash, signatures[i]);
-      console.log("signer %s", signer);
       if (isValidator[signer] && !isSignatureUsed[signer] && !validatorAlreadySigned[signer]){
         isSignatureUsed[signer] = true;
         validatorAlreadySigned[signer] = true;
@@ -162,6 +164,8 @@ contract MultiSignature {
       validatorAlreadySigned[signers[i]] = false;
     }
 
+    if (isApproved == 0) return false;
+
     if (isApproved >= (validators.length * threshold) / 100){
       return true;
     } else {
@@ -171,51 +175,48 @@ contract MultiSignature {
 
   /**
    * @notice Recover signer address from signature
-   * @param message Hash of the message signed
+   * @param hash Hash of the message signed
    * @param signature The signature from validators
    * @return The address of the signer, address(0) if signature is invalid
    */
-  function recoverSigner(bytes32 message, bytes memory signature)
-    internal
-    pure
-    returns (address)
-  {
-    uint8 v;
-    bytes32 r;
-    bytes32 s;
+   function recoverSigner(bytes32 hash, bytes memory signature) internal pure returns (address) {
+       bytes32 r;
+       bytes32 s;
+       uint8 v;
 
-    (v, r, s) = splitSignature(signature);
+       if (signature.length != 65) {
+           return (address(0));
+       }
 
-    return ecrecover(message, v, r, s);
-  }
+       assembly {
+           r := mload(add(signature, 0x20))
+           s := mload(add(signature, 0x40))
+           v := byte(0, mload(add(signature, 0x60)))
+       }
 
-  /**
-   * @notice Helper function return split signature into r,s,v.
-   * @param signature Signature we want to split
-   * @return r, v, s
-   */
-  function splitSignature(bytes memory signature)
-    internal
-    pure
-    returns (uint8, bytes32, bytes32)
-  {
-    require(signature.length == 65);
+       if (v < 27) {
+           v += 27;
+       }
 
-    bytes32 r;
-    bytes32 s;
-    uint8 v;
+       if (v != 27 && v != 28) {
+           return (address(0));
+       } else {
+           return ecrecover(hash, v, r, s);
+       }
+   }
 
-    assembly {
-      // first 32 bytes, after the length prefix
-      r := mload(add(signature, 32))
-      // second 32 bytes
-      s := mload(add(signature, 64))
-      // final byte (first byte of the next 32 bytes)
-      v := byte(0, mload(add(signature, 96)))
-    }
+   /**
+    * @notice Helper function to remove element by index from validators array
+    * @param index Index of element to remove
+    */
+   function removeByIndex(uint256 index) internal {
+     require(index < validators.length, "index out of bound");
 
-    return (v, r, s);
-  }
+     for (uint i = index; i < validators.length - 1; i++) {
+         validators[i] = validators[i + 1];
+     }
+     validators.pop();
+   }
 
   /**
    * @notice Helper function return length of the valiators array.
@@ -226,10 +227,10 @@ contract MultiSignature {
   }
 
   /**
-   * @notice Helper function return prefixed message.
-   * @return Bytes32 hash of prefixed message
+   * @notice Get hash of the input hash and ethereum message prefix
+   * @param hash Hash of some data
    */
-  function prefixed(bytes32 hash) internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
+  function getEthereumMessageHash(bytes32 hash) public pure returns(bytes32) {
+      return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
   }
 }
