@@ -3,11 +3,13 @@ pragma solidity ^0.8.4;
 
 import './interfaces/IERC20.sol';
 
+import "hardhat/console.sol";
+
 /// @title MultiSignature contract for Splinterlands
 /// @author @fbslo
 /// @notice Multisignature contract that only allows changes if enough valid signatures are used
 
-contract MultiSignature {
+contract MultiSignatureGeneric {
   /// @notice Address of the token contract
   address public tokenContract;
   /// @notice Required threshold in percents
@@ -56,7 +58,7 @@ contract MultiSignature {
       }
       tokenContract = newTokenContract;
   }
-
+  
   /**
    * @notice Transfer tokens from this contract to another address, has to be approved with enough valid signatures
    * @param signatures An array of signatures from validators
