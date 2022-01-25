@@ -1,6 +1,7 @@
 require("@nomiclabs/hardhat-waffle");
 require("hardhat-tracer");
 require("@nomiclabs/hardhat-web3");
+require("hardhat-gas-reporter");
 
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
@@ -28,5 +29,10 @@ module.exports = {
         version: "0.5.16",
       },
     ],
+  },
+  gasReporter: {
+    enabled: false,
+    currency: 'USD',
+    gasPrice: 5
   }
 };

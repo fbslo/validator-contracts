@@ -10,10 +10,11 @@
     "eth-sig-util": "^2.5.4",
     "ethereumjs-abi": "^0.6.8",
     "hardhat": "^2.6.7",
+    "hardhat-gas-reporter": "^1.0.7",
     "hardhat-tracer": "^1.0.0-alpha.6"
   },
   "devDependencies": {
     "@nomiclabs/hardhat-web3": "^2.0.0",
-    "web3": "^1.6.0"
+    "web3": "^1.7.0"
   }
 }

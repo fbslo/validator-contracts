@@ -31,7 +31,7 @@ describe("MultiSignatureGeneric", function () {
     await mockToken.deployed();
 
     const MultiSignature = await ethers.getContractFactory("MultiSignatureGeneric");
-    multiSignature = await MultiSignature.deploy(testValidators, mockToken.address);
+    multiSignature = await MultiSignature.deploy(testValidators);
     await multiSignature.deployed();
 
     let tokenTransferTx = mockToken.transfer(multiSignature.address, 10000)
@@ -40,7 +40,6 @@ describe("MultiSignatureGeneric", function () {
   it("should deploy contract and add validators", async function () {
     await init()
 
-    expect(await multiSignature.tokenContract()).to.equal(mockToken.address);
     expect(await multiSignature.threshold()).to.equal(80);
     let validatorsLength = await multiSignature.getValidatorsLength()
     for (i = 0; i < validatorsLength; i++){
@@ -71,7 +70,6 @@ describe("MultiSignatureGeneric", function () {
 
     let startContractBalance = await mockToken.balanceOf(multiSignature.address)
     let startUserBalance = await mockToken.balanceOf(accounts[0].address)
-
 
     let transferTx = await multiSignature.call(signatures, target, value, 'transfer(address,uint256)', data, 0)
 
