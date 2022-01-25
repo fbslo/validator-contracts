@@ -36,10 +36,10 @@ module.exports = {
     currency: 'USD',
     gasPrice: 5
   },
-  networks: {
-    bsc: {
-      url: "https://bsc-dataseed.binance.org/",
-      accounts: [`${process.env.PRIVATE_KEY_BSC}`]
-    }
-  }
+  // networks: {
+  //   bsc: {
+  //     url: "https://bsc-dataseed.binance.org/",
+  //     accounts: [`${process.env.PRIVATE_KEY_BSC}`]
+  //   }
+  // }
 };

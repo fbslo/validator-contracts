@@ -18,6 +18,9 @@ let testPrivateKeys = [
   '0x1016d0f886dc50b613c75207f188e9cc46aad1381f45bb92a45b0c889ad617e8'
 ]
 
+let governorAddress = "0xCc0127e44bc02682A60BDF287c070e0848D46844"
+let governorPrivateKey = "0x869eef4d9048454b3480fee7d96fa3746a51c1e48c39c4ae8d07b8d96d8bbbb9"
+
 describe("MultiSignatureGeneric", function () {
   let accounts;
   let multiSignature;
@@ -31,7 +34,7 @@ describe("MultiSignatureGeneric", function () {
     await mockToken.deployed();
 
     const MultiSignature = await ethers.getContractFactory("MultiSignatureGeneric");
-    multiSignature = await MultiSignature.deploy(testValidators);
+    multiSignature = await MultiSignature.deploy(testValidators, governorAddress);
     await multiSignature.deployed();
 
     let tokenTransferTx = mockToken.transfer(multiSignature.address, 10000)
@@ -58,20 +61,25 @@ describe("MultiSignatureGeneric", function () {
     let parameterValues = [to, amount];
     let data = abi.rawEncode(parameterTypes, parameterValues);
 
+
+    let msgHash = await web3.utils.soliditySha3(target, value, 'transfer(address,uint256)', data, 0, multiSignature.address);
+    let msgParams = {
+      data: msgHash
+    }
     for (i in testValidators){
-      let msgHash = await web3.utils.soliditySha3(target, value, 'transfer(address,uint256)', data, 0, multiSignature.address);
-      let msgParams = {
-        data: msgHash
-      }
       if (!testPrivateKeys[i].startsWith('0x')) testPrivateKeys[i] = '0x' + testPrivateKeys[i]
       let signature = await sigUtil.personalSign(ethers.utils.arrayify(testPrivateKeys[i]), msgParams)
       signatures.push(signature)
     }
 
+    //governor signature
+    if (!governorPrivateKey.startsWith('0x')) governorPrivateKey = '0x' + governorPrivateKey
+    let governorSignature = await sigUtil.personalSign(ethers.utils.arrayify(governorPrivateKey), msgParams)
+
     let startContractBalance = await mockToken.balanceOf(multiSignature.address)
     let startUserBalance = await mockToken.balanceOf(accounts[0].address)
 
-    let transferTx = await multiSignature.call(signatures, target, value, 'transfer(address,uint256)', data, 0)
+    let transferTx = await multiSignature.call(signatures, governorSignature, target, value, 'transfer(address,uint256)', data, 0)
 
     let endContractBalance = await mockToken.balanceOf(multiSignature.address)
     let endUserBalance = await mockToken.balanceOf(accounts[0].address)
@@ -79,6 +87,76 @@ describe("MultiSignatureGeneric", function () {
     expect(startContractBalance.add(startUserBalance)).to.equal(endContractBalance.add(endUserBalance));
     expect(startContractBalance).to.equal(endContractBalance.add(amount));
     expect(endUserBalance).to.equal(startUserBalance.add(amount));
+  });
+
+  it("should fail with `threshold not reached` error", async function () {
+    let target = mockToken.address
+    let to = accounts[0].address
+    let amount = 1000
+    let value = 0
+    let signatures = []
+
+    let parameterTypes = ["address", "uint256"];
+    let parameterValues = [to, amount];
+    let data = abi.rawEncode(parameterTypes, parameterValues);
+
+    let msgHash = await web3.utils.soliditySha3(target, value, 'transfer(address,uint256)', data, 1, multiSignature.address);
+    let msgParams = {
+      data: msgHash
+    }
+    for (let i = 0; i < testValidators.length / 2; i++){
+      if (!testPrivateKeys[i].startsWith('0x')) testPrivateKeys[i] = '0x' + testPrivateKeys[i]
+      let signature = await sigUtil.personalSign(ethers.utils.arrayify(testPrivateKeys[i]), msgParams)
+      signatures.push(signature)
+    }
+
+    //governor signature
+    if (!governorPrivateKey.startsWith('0x')) governorPrivateKey = '0x' + governorPrivateKey
+    let governorSignature = await sigUtil.personalSign(ethers.utils.arrayify(governorPrivateKey), msgParams)
+
+    let startContractBalance = await mockToken.balanceOf(multiSignature.address)
+    let startUserBalance = await mockToken.balanceOf(accounts[0].address)
+
+    try {
+      let transferTx = await multiSignature.call(signatures, governorSignature, target, value, 'transfer(address,uint256)', data, 1)
+    } catch (e) {
+      expect(e.message).to.equal("VM Exception while processing transaction: reverted with reason string 'Signatures not valid/threshold not reached'")
+    }
+  });
+
+  it("should fail with `Governor signature not valid` error", async function () {
+    let target = mockToken.address
+    let to = accounts[0].address
+    let amount = 1000
+    let value = 0
+    let signatures = []
+
+    let parameterTypes = ["address", "uint256"];
+    let parameterValues = [to, amount];
+    let data = abi.rawEncode(parameterTypes, parameterValues);
+
+    let msgHash = await web3.utils.soliditySha3(target, value, 'transfer(address,uint256)', data, 1, multiSignature.address);
+    let msgParams = {
+      data: msgHash
+    }
+    for (i in testValidators){
+      if (!testPrivateKeys[i].startsWith('0x')) testPrivateKeys[i] = '0x' + testPrivateKeys[i]
+      let signature = await sigUtil.personalSign(ethers.utils.arrayify(testPrivateKeys[i]), msgParams)
+      signatures.push(signature)
+    }
+
+    //governor signature, but with invalid private key
+    governorPrivateKey = testPrivateKeys[0]
+    let governorSignature = await sigUtil.personalSign(ethers.utils.arrayify(governorPrivateKey), msgParams)
+
+    let startContractBalance = await mockToken.balanceOf(multiSignature.address)
+    let startUserBalance = await mockToken.balanceOf(accounts[0].address)
+
+    try {
+      let transferTx = await multiSignature.call(signatures, governorSignature, target, value, 'transfer(address,uint256)', data, 1)
+    } catch (e) {
+      expect(e.message).to.equal("VM Exception while processing transaction: reverted with reason string 'Governor signature not valid'")
+    }
   });
 
   it("should add a validator", async function () {

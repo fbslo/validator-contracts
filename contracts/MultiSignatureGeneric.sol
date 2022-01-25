@@ -14,6 +14,8 @@ contract MultiSignatureGeneric {
   uint256 public threshold = 80;
   /// @notice Array of all active validators
   address[] public validators;
+  /// @notice Address whose signature is required for any transaction
+  address public governorAddress;
   /// @notice Nonce to prevent replay attacks
   uint256 public nonce = 0;
   /// @notice A record of states if address is validator
@@ -39,9 +41,11 @@ contract MultiSignatureGeneric {
   /**
    * @notice Construct a new MultiSignature contract
    * @param newValidators An array of addresses with validator rights
+   * @param newGovernorAddress An address whose signature is always required
    */
-  constructor(address[] memory newValidators) {
+  constructor(address[] memory newValidators, address newGovernorAddress) {
       require(newValidators.length > 0, "Validators required");
+      require(newGovernorAddress != address(0), "Invalid governor address");
 
       for (uint256 i = 0; i < newValidators.length; i++) {
           address validator = newValidators[i];
@@ -52,20 +56,35 @@ contract MultiSignatureGeneric {
           isValidator[validator] = true;
           validators.push(validator);
       }
+
+      governorAddress = newGovernorAddress;
   }
 
   /**
    * @notice Transfer tokens from this contract to another address, has to be approved with enough valid signatures
    * @param signatures An array of signatures from validators
+   * @param governorSignature Signature of governor address, must be valid or transaction will revert
    * @param target The address of the account receiving the tokens
    * @param value The amount of ETH to send
    * @param data Data to call external contract with
    * @param txNonce unique nonce to prevent replay attacks
    */
-  function call(bytes[] memory signatures, address target, uint256 value, string memory functionSignature, bytes memory data, uint256 txNonce) external {
+  function call(
+    bytes[] memory signatures,
+    bytes memory governorSignature,
+    address target,
+    uint256 value,
+    string memory functionSignature,
+    bytes memory data,
+    uint256 txNonce
+  ) external {
       require(!isAlreadyApproved[txNonce], 'txNonce already used');
 
       bytes32 hash = getEthereumMessageHash(keccak256(abi.encodePacked(target, value, functionSignature, data, txNonce, address(this))));
+
+      if (governorAddress != address(0)){
+        require(recoverSigner(hash, governorSignature) == governorAddress, 'Governor signature not valid');
+      }
 
       require(areSignaturesValid(signatures, hash), 'Signatures not valid/threshold not reached');
       isAlreadyApproved[txNonce] = true;
@@ -124,6 +143,16 @@ contract MultiSignatureGeneric {
     }
 
     emit ValidatorRemoved(validatorAddress);
+  }
+
+  /**
+   * @notice Update governor address (governor's signature is required for every transaction)
+   * @param newGovernorAddress New governor address, can be address(0) to disable the need for governor's signature
+   */
+  function updateGovernorAddress(address newGovernorAddress) external {
+    require(msg.sender == governorAddress, "Only governor address");
+
+    governorAddress = newGovernorAddress;
   }
 
   /**

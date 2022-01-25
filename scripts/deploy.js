@@ -5,14 +5,14 @@ async function main() {
   let validators = [
     '0xAE89D84e95cE4B82C94F6645029D633f5c6623aa'
   ]
-  let token = '0x44883053BfCaf90af0787618173DD56e8C2dEB36'
+  let requiredAddress = ""
 
-  const MultiSignature = await ethers.getContractFactory("MultiSignature");
-  const multiSignature = await MultiSignature.deploy(validators, token);
+  const MultiSignatureGeneric = await ethers.getContractFactory("MultiSignatureGeneric");
+  const multiSignatureGeneric = await MultiSignatureGeneric.deploy(validators, requiredAddress);
 
-  await multiSignature.deployed();
+  await multiSignatureGeneric.deployed();
 
-  console.log("MultiSignature deployed to:", multiSignature.address);
+  console.log("MultiSignature deployed to:", multiSignatureGeneric.address);
 }
 
 main()
