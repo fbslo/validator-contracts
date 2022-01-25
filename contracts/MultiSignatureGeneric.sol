@@ -42,7 +42,6 @@ contract MultiSignatureGeneric {
    */
   constructor(address[] memory newValidators) {
       require(newValidators.length > 0, "Validators required");
-      require(newValidators.length <= 40, "Max 40 validators");
 
       for (uint256 i = 0; i < newValidators.length; i++) {
           address validator = newValidators[i];

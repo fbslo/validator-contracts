@@ -1,3 +1,4 @@
+require("dotenv").config()
 require("@nomiclabs/hardhat-waffle");
 require("hardhat-tracer");
 require("@nomiclabs/hardhat-web3");
@@ -34,5 +35,11 @@ module.exports = {
     enabled: false,
     currency: 'USD',
     gasPrice: 5
+  },
+  networks: {
+    bsc: {
+      url: "https://bsc-dataseed.binance.org/",
+      accounts: [`${process.env.PRIVATE_KEY_BSC}`]
+    }
   }
 };

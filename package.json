@@ -5,6 +5,7 @@
     "@openzeppelin/contracts": "^4.3.2",
     "chai": "^4.3.4",
     "coinkey": "^0.1.0",
+    "dotenv": "^14.3.0",
     "ecdsa": "^0.7.0",
     "elliptic": "^6.5.4",
     "eth-sig-util": "^2.5.4",
