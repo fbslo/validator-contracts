@@ -10,8 +10,6 @@ import "hardhat/console.sol";
 /// @notice Multisignature contract that only allows changes if enough valid signatures are used
 
 contract MultiSignatureGeneric {
-  /// @notice Address of the token contract
-  address public tokenContract;
   /// @notice Required threshold in percents
   uint256 public threshold = 80;
   /// @notice Array of all active validators
@@ -41,9 +39,8 @@ contract MultiSignatureGeneric {
   /**
    * @notice Construct a new MultiSignature contract
    * @param newValidators An array of addresses with validator rights
-   * @param newTokenContract The address of the token
    */
-  constructor(address[] memory newValidators, address newTokenContract) {
+  constructor(address[] memory newValidators) {
       require(newValidators.length > 0, "Validators required");
       require(newValidators.length <= 40, "Max 40 validators");
 
@@ -56,9 +53,8 @@ contract MultiSignatureGeneric {
           isValidator[validator] = true;
           validators.push(validator);
       }
-      tokenContract = newTokenContract;
   }
-  
+
   /**
    * @notice Transfer tokens from this contract to another address, has to be approved with enough valid signatures
    * @param signatures An array of signatures from validators
